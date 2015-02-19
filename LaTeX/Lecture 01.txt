@@ -1,0 +1,101 @@
+13	Risk Assessment: Risk = Threat * Vulnerability
+27	Difference between hacking and penetration testing: Permission
+33	# vulnerabilities is on the rise
+34	History of disclosure:
+
+	0) no disclosure [1950-1988]
+	
+	1) Mailing lists [1988-1993]
+	= discuss security on invite-only mailing lists
+	- security researchers seen as evil ("Why are you looking at that?")
+	- mails can be leaked once you get on the mailing list
+	- vendors do not acknowledge security
+	- everything is buy-at-your-own-risk
+	
+	2) Full disclosure [1993-2002]
+	= disclose security problems to everyone (good and bad)
+	- controversial (but necessary?)
+	- period marked by miscommunication
+	- creates a race (exploits faster than patches)
+	- still a problem for start-ups
+	- forces vendors to act
+	- did not reduce attacks
+	
+	3) Responsible disclosure [2002-2010]
+	= withhold info until vendor can patches
+	- responsibility is on researcher instead of vendor
+	
+	4) Bug Bounties [2010-present]
+	- coordinated vulnerability disclosure = vendors:"we won't sue you"
+	- vendorsec mailing lists (bad idea)
+	- delayed disclosure = give vendor x time to patch before full disclosure
+	- bug bounties: cash reward per bug
+	
+57	Penetration testing cycle
+	--> cycle can restart at any point
+	
+	0) Prior
+	- what: targets, off limits, threat model
+	- how: physical access?, social engineering?, covert/overt
+	- when (timeline)
+	- report: what to expect
+	
+	1) Reconnaissance
+	= intelligence gathering
+	- Internet: search engines, device search engines, company website, public records, social media
+	- Phone
+	- physical access
+	- OSINT (open source intel) / HUMINT (human intel)
+	
+	2) Scanning
+	= identify attack surface + finding vulnerabilities
+	- "attack surface" is important word
+	
+	3) Gain access
+	= exploit vulnerabilities
+	- Social Engineering (easiest)
+	- Web app exploitation
+	- pivoting from 3rd party
+	- network app exploitation
+	- malicious USB
+	- etc
+	
+	4) Privilege Escalation
+	= get root
+	- password cracking
+	- SUID exploits
+	- sandbox escape
+	- keylogging
+	- social engineering
+	- etc
+	
+	5) Maintain access
+	= actual goal of attack
+	- steal money/data/users/intellectual property
+	- install backdoor
+	- expand control (e.g. passwords, pivoting to 3rd party)
+	- erase logs
+	
+69	Most important thing to learn: how to communicate
+70	Threat models:
+	- Attacker centric: what are his goals + how to achieve them
+	- Software centric: design review (step through + evaluate each part)
+	- Asset centric: start from pot o' gold
+74	Attacker goals:
+	- money/data/users/intellectual property
+	- critical infrastructure
+	- enemies/political dissidents
+	- credit cards/financial data
+	- password (hashes)
+	- sabotage
+	- pivoting to 3rd party
+	- long term backdoors
+	- 4 teh lulz
+76	Attackers has advantages:
+	---> only need to find 1 hole; defenders need to stop everything
+	- can be completely anonymous (proxy, spoofing)
+	- attack BYOD/significant other
+	- attack partners
+	- blackmail, $5 wrench
+	- widely available crime kits
+	- can break laws
