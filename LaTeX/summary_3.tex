@@ -1,0 +1,274 @@
+\documentclass[letterpaper]{article}
+\usepackage[utf8]{inputenc}				% use Unicode
+\setlength\parindent{0pt}				% no indentation at start of paragraph
+\usepackage{hyperref}
+%\usepackage{multicol}
+%\usepackage{graphicx}
+%\usepackage{float}
+%\graphicspath{{./figures/}}
+
+\newcommand{\p}{\vspace{1em}\par}		% macro to start new paragraph
+
+\author{David De Lille}
+\title{Offensive Computer Security: Summary 3}
+
+\begin{document}
+\maketitle
+
+\section{Dynamic memory (continued)}
+\subsection{Memory Allocator}
+The memory manager runs as part of the process. The linker adds in code provided by the OS, though compilers can provide alternatives. This code can be linked statically or dynamically.
+
+\p The memory allocator needs 3 things to function: a list of available memory, an algorithm to allocate chunks (of a given size), and an algorithm to deallocate chunks. There are 2 methods for finding a suitable chunk for allocation: first fit (the first chunk that is big enough; faster) or best fit (the smallest chunk that is big enough; more efficient).
+
+\p The free list can be thought of as a doubly-linked list of free chunks. Each chunk has boundary tags that contain metadata about the chunk, such as the size and the pointers to the previous/next chunks.
+
+\subsubsection{Doug Lea's dlmalloc allocator}
+This is the basis for Linux memory allocators. It arranges the free list as a circular, doubly-linked list of chunks (also called bins). Aside from the size of the chunk and the pointers to the surrounding chunks, the tag boundaries (for both used and freed chunks) contains either the size of the previous chunk (if free) or the last 4 bytes of the previous used chunk (if not free). Finally, it also contains a flag indicating if the previous flag is in use; this flag is stored as the last bit of the size of the chunk, because the size of chunks are always even (meaning the least significant bit would always be zero).
+
+\p Because of the metadata that's stored for each chunk, the total used memory will always be smaller than the memory available to the program.
+
+\p The unlinking algorithm (which removes a chunk from the free list for use by the program) works in 2 steps: it find the locations of the surrounding chunks, and then overwrite the pointers in those chunks to bypass the chunk in question. See slides 11-18 for a visualisation. It's important to note that the system trusts the pointers provided.
+
+\p The free algorithm is roughly the reverse of the unlinking algorithm, and it also involves overwriting pointers. During this algorithm, a check is performed to see if the next chunk happens to be free as well. If this is the case, the chunks are merged and returned to the free list as one. An example of freeing a chunk is illustrated in slides 19-26.
+
+\subsection{Heap vulnerabilities}
+\subsubsection{Heap overflow}
+Slides 19-35 explain how an overflow on the heap can cause the free algorithm to overwrite an arbitrary memory location, provided by an attacker.
+
+\subsubsection{Double free}
+If free is called twice on the same chunk, the free list gets messed up and can lead to a vulnerability. There are some conditions, however:
+\begin{itemize}
+\item the chunk in question has to be isolated (both surrounding chunks have to be in use)
+\item the free list bin in which the chunk is going must be
+empty (all those size-chunks must be in use)
+\end{itemize}
+This bug is a lot more complicated than a heap overflow, and refers to the reference book (Secure Coding in C an C++, by Robert Seacord) for more information. This vulnerability affects dlmalloc and old version of RtlHeap, but most modern allocator alternatives do some sort of safe unlinking, which prevents most double frees.
+
+\subsubsection{Use after free}
+This happens when a pointer to a chunk is used after it has been freed. It is especially dangerous if it is used as a function pointer. This requires an attacker to overwrite the freed memory with a malicious substitute.
+
+\section{Integer security}
+\subsection{Signed vs Unsigned}
+Unsigned values correspond to the `normal' bit representation.
+
+\p Signed numbers are stored in twos-complement. This means that positive numbers have the `normal' bit representation, with a leading zero. Negative numbers have the reversed bit representation of the positive number that is 1 value smaller (e.g. -2 has the reversed bit representation of 1). The reason for this seemingly strange notation, is that addition because very simple and becomes similar to addition of unsigned numbers.
+
+\begin{table}
+\centering
+\begin{tabular}{c|cc}
+absolute value & positive & negative\\\hline
+0 & 00000000 & N/A\\
+1 & 00000001 & 11111111\\
+2 & 00000010 & 11111110\\
+...& ... & ...\\
+126& 01111110 & 10000010\\
+127& 01111111 & 10000001\\
+128& N/A & 10000000
+\end{tabular}
+\caption{Bit representations of a signed char}
+\end{table}
+
+\p Note: Integers are signed by default
+
+\subsection{Integer truncation}
+Slides 42-43 show an example of an integer being truncated into a short. This is done (in this case) by placing the original value in eax, and then reading the ax register (which is smaller; see summary 2).
+
+\p The standard data types can have different length depending on the system used. It is safer to instead use data types that explicitly call out the size and type of data stored in a variable.
+
+\subsection{Overflow}
+When an unsigned value is increased beyond the maximum, the result is always modulo, meaning it wraps around to smallest possible value (0).
+
+\p Signed values can not overflow. This is undefined behaviour, according to the C99 standard, but some compilers still allow it.
+
+\subsubsection{Result saturation}
+Certain graphical processing units (GPUs) and digital processing units (DPUs) don't allow overflow. Instead, the result is going to be set to the max value. The reasoning is that if a value is representing, for example, how dark a pixel is, then increasing that value should not suddenly turn the highest possible value into the lowest possible value. It is better in that scenario to stop at the highest possible value. This, off course, does not conform to the C99 standard.
+
+\subsection{Underflow}
+This is the twin of overflow, that happens when a value is decreased below the minimum value. Again, the C99 standard dictates that only unsigned values can underflow; signed underflow is undefined behaviour.
+
+\subsection{Conversion/Promotion}
+When comparing a signed and an unsigned value, the signed value will converted to an unsigned value. 
+\href{https://www.securecoding.cert.org/confluence/display/seccode/INT02-
+C.+Understand+integer+conversion+rules
+}{This link} contains more information on the rules for integer conversion.
+
+\p For certain operations, the data will get promoted up to an integer, for the purpose of that operation.
+
+\subsection{Nuances}
+\begin{itemize}
+\item -INT\_MIN is considered undefined behaviour
+\item Bit shifting has certain limitations:
+	\begin{itemize}
+	\item negative values can't be left shifted
+	\item a 1 can't be shifted into the sign position
+	\item a value can't be shift by more than the bitwidth of that object
+	\end{itemize}
+\item (int)x-1+1 can be undefined, if x = INT\_MIN (but a compiler might optimise this out)
+\item a \% b is undefined, if b is negative
+\item (short)x + 1 != (short)(x+1), if x = signed INT\_ MAX
+\end{itemize}
+
+\subsection{Casting}
+When casting a signed value to an unsigned value, negative numbers can become very big ((unsigned int)-1 == UINT\_MAX).
+
+\p There are 2 special data types reserved for storing sizes. size\_t is equal to an unsigned int, because sizes should never be negative. However, some people wanted to be able to return -1 in certain functions to indicate an error, but because it would be casted to an unsigned int, this would lead to a very large size\_t, which led to errors. 
+The solution was another data type: ssize\_t, which does allow for a -1 value (ssize\_t $\in$ [-1, 32767]).
+
+\subsection{Important of integer bug}
+These types of bugs are often not understood by developers, and wrong use can lead to vulnerabilities. \href{http://www.cs.utah.edu/~regehr/papers/overflow12.
+pdf
+}{This paper} explains overflow in C and C++ in more depth. Another issue that show the importance of these bugs, is that they can occur in cryptography libraries (as shown in \href{http://blog.regehr.org/archives/1054
+}{this blog post}).
+
+\subsection{Floats}
+Unlike integers, floats have a dedicated representation for special cases (Not A Number; NaN). Comparing this ``value'' to another float will always return zero, even if the other value is also NaN.
+
+\p Precision is often lost during float calculations. Sums of floats don't always add up right. More nuances about precision in floats can be found \href{http://floating-point-gui.de/}{here}.
+
+\section{Format strings}
+Format strings are ways to control output for certain functions (printf, sprintf,  snprintf, fprintf, syslog, ...). By using conversion specifiers, certain data can be represented in a specific way.
+
+\p When an attacker can control a format string, this can lead to vulnerabilities; including Denial of Service, information leaks, and arbitrary writes. This technique can be used to defeat ASLR and enable Return Oriented Programming (ROP). 
+Preventing these vulnerabilities comes down to not allowing user input into a format string.
+
+\subsection{Calling convention for functions}
+When a function is called, it's argument have to be passed. Some of the argument may get passed through registers, but when there are a lot of argument, they will get passed the stack. Slides 69-76 shows several examples for both 32-bit and 64-bit architectures.
+
+\p In the end, the calling conventions depend on the architecture, the calling standard, and the type of function (system calls are called differently from normal code).
+
+\subsection{Conversion specifiers}
+\%[flags][width][.precision][{length-modifier}] conversion-specifier
+\begin{itemize}
+\item \%d or \%i: signed decimal integer
+\item \% u: unsigned decimal integer
+\item \% o: unsigned octal
+\item \%x: unsigned hexadecimal
+\item \%X: unsigned hexadecimal (uppercase)
+\item \%f: decimal float
+\item \%e: scientific notation
+\item \%a: hexadecimal floating point
+\item \%c: char
+\item \%s: string
+\item \%p: pointer address
+\item \%n: write number of characters written so far to corresponding address (nothing printed)
+\end{itemize}
+
+\begin{table}[witdh=\textwidth]
+\begin{tabular}{c|ccccccc}
+length&d, i& u,o,x,X&f,F,e,E,& c & s & p & n\\
+&&&g,G,a,A\\\hline
+(none)&int& unsigned int& double&int&char*&void*&int*\\
+hh&signed char& unsigned char&&&&&signed char*\\
+h& short int&unsigned short int&&&&&short int*\\
+l&long int&unsigned long int&&wint\_t&wwhar\_t*&&long int*\\
+ll&long long int&unsigned long long int&&&&&long long int*\\
+j&intmax\_t&uintmax\_t&&&&&intmax\_t*\\
+z&size\_t&size\_t&&&&&size\_t*\\
+t&ptrdiff\_t&ptrdiff\_t&&&&&ptrdiff\_t*\\
+L&&&long double
+\end{tabular}
+\end{table}
+
+\subsection{Exploiting format string vulnerabilities}
+This is just a short intro. Future summaries will go into more depth. Also, the book Hacking: The Art of Exploitation (HAOE) has a section (chapter 0x352) on format strings that explains the concept extremely well.
+
+\subsubsection{Denial of Service}
+format string  = ``\%s\%s\%s\%s\%s\%s\%s\%s...\%s''\newline
+This format string will attempt to read a large number of strings off the stack, dereferencing values and interpreting them as pointers to strings. This will most likely cause a SEGFAULT, because of dereferencing non-pointer data (for example, NULL).
+
+\subsubsection{Information leaks}
+format string  = ``\%08x \%08x \%08x \%08x \%08x \%08x...\%08x''\newline
+Printing this format string will print out the values on the stack (not dereferencing them), which could give an attacker insight into how the process works. It's important to remember that such values will be printed in little-endian.
+
+\subsubsection{View arbitrary memory locations}
+format string  = ``\slash xde\slash xf5\slash xe5\slash x04\%x\%x\%x\%x\%s''\newline
+The previous format string can also be used to control the argument pointer, by moving it forward by 4 or 8 bytes. This can be exploited to view arbitrary memory locations.\newline Including the desired address (0x04e5f5de here) in the format string, will place it on the stack. After moving forward the argument pointer (the amount of \%x's may vary), we can then read out that memory location (with \%s).
+
+\subsubsection{Writing small values}
+format string  = ``\slash xde\slash xf5\slash xe5\slash x04\%x\%x\%x\%150x\%n''\newline
+It is possible to use the \%n conversion specifier to write small values to an arbitrary location, similar to how we can read values at an arbitrary location. By using a length modifier, this becomes even easier. However, it is still not easy to write larger values (such as memory addresses).
+
+\subsubsection{Arbitrary write}
+We can extend the previous case to be able to also write large values. Let's say we want to overwrite 4 bytes at a given address. Using a single write would not work, however, we could do it by writing 4 times; 1 byte at a time. It is easier to write 4 values smaller than 255 than 1 value, which can range up to $2^{32}$ (4294967296). More info on this in further summaries, or in chapter 0x352 of HAOE.
+
+\section{Concurrency and Race conditions}
+\subsection{Concurrency and Parallelism}
+(Note: I don't agree with the definitions given by the course slides. Instead I use the definitions explained \href{http://blog.golang.org/concurrency-is-not-parallelism}{here}.)
+
+\p Concurrency is the composition of independently executing processes. Parallelism is the simultaneous execution of (possibly related) computations. Concurrency is about dealing with lots of things at once. Parallelism is about doing lots of things at once.
+
+\p There are 2 types of parallelism: data-centric and task-centric. Data-centric means the data is split up and processed in parallel (for example: a parallel implementation of MergeSort). Task-centric is when the work gets split up into distinct tasks that are executed in parallel.
+
+\subsection{Properties for Race conditions}
+\begin{itemize}
+\item Concurrency: at least 2 independent control flows interacting
+\item Shared Object: same object shared by the concurrent flows
+\item Changing Object State: the object is changed by at least one of the concurrent flows
+\end{itemize}
+
+\subsection{How to find Race conditions}
+\begin{itemize}
+\item Focus on the shared objects
+\item Follow how each shared object is handled through the code. Focus on any state changes.
+\item When the state changes, what other flows could be interacting with it?
+\end{itemize}
+
+\subsection{Consequences of Race conditions}
+Race conditions can result in corrupted values and inconsistent states. Volatile objects act in undefined ways when handled asynchronously. It is possible to abuse Race conditions to elevate permissions (e.g. CVE-2007-4302, CVE-2007-4303). Finally, a race condition can also lead to a deadlock (DoS).
+
+\section{Reading: HAOE 0x280 - 0x300 + 0x350 - 0x400}
+\subsection*{0x281 File access}
+File descriptor, file stream, file flags, bitwise operations
+
+\subsection*{0x282 File permissions}
+Unix permissions (see summary 5), owner/group/other, chmod
+
+\subsection*{0x283 User IDs}
+id, su, sudo, chsh, setuid, getuid/geteuid, passwd
+
+\subsection*{0x284 Structs}
+Structs, time.h, epoch, member-of operator
+
+\subsection*{0x285 Function pointers}
+Function pointers
+
+\subsection*{0x286 Pseudo-random numbers}
+Pseudo-random, seeding with time()
+
+\subsection*{0x351 Format parameters}
+Format parameters, \%n, stack frame structure
+
+\subsection*{0x352 Format string vulnerability}
+Format string vulnerability, examine stack memory, format string itself on stack
+
+\subsection*{0x353 Reading from arbitrary memory addresses}
+Arbitrary read, read from environment variable
+
+\subsection*{0x354 Writing to arbitrary memory addresses}
+Arbitrary write, field-width option, writing large values (one byte at a time), limitation of field-width option (it provides a minimum, but not a maximum)
+
+\subsection*{0x355 Direct parameter access}
+Direct parameter access (``\$'')
+
+\subsection*{0x356 Short writes}
+Length modifier (``h'')
+
+\subsection*{0x357 Detours with .dtors}
+.dtors table section, .ctors table section, destructor attribute, nm
+
+\subsection*{0x358 Another notesearch vulnerability}
+Example of overwriting .dtors with address of env variable containing shellcode
+
+\subsection*{0x359 Overwriting the Global Offset Table}
+Procedure Linkage Table (PLT), Global Offset Table (GOT)
+
+\section{Other notes}
+\begin{itemize}
+\item Use the -m32 compiler flag to compile a 32-bit binary on a 64-bit system
+\item ``\slash x''  denotes a special, ASCII-encoded character (e.g. ``\slash x61'' corresponds to ``a'')
+\item \href{http://q.viva64.com/}{http://q.viva64.com/}: C++ bug finding quiz (60 seconds per bug)
+\end{itemize}
+
+\end{document}
+
